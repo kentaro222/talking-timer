@@ -5,6 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>読み上げタイマー</title>
+<link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+<link rel="icon" type="image/png" href="icon.png" sizes="512x512">
+<link rel="apple-touch-icon" href="apple-touch-icon.png" sizes="180x180">
+<meta name="theme-color" content="#20251c">
 <style>
 :root{color-scheme:dark;font-family:Inter,"Hiragino Sans",Meiryo,sans-serif;background:#131610;color:#f4f5ea;--accent:#d8fa89;--line:#43493c;--muted:#b7bdae}
 *{box-sizing:border-box}body{margin:0}main{max-width:1060px;margin:auto;padding:clamp(20px,5vw,58px) clamp(15px,4vw,40px)}
@@ -16,13 +20,15 @@ button,.pick,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled{
 .modes,.actions{display:flex;gap:8px}.modes button,.actions button{flex:1}.clock{text-align:center;padding:24px 0 20px;font-size:clamp(3.5rem,11vw,7rem);font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.07em;line-height:1;color:var(--accent)}
 .time-settings{display:flex;align-items:center;justify-content:center;gap:10px;min-height:48px;margin-bottom:16px}.time-settings input{width:4.25rem}.options{border-top:1px solid var(--line);margin-top:22px;padding-top:17px;justify-content:flex-start}.options select{max-width:100%}.note,.muted{color:var(--muted);font-size:.85rem}.note{margin:9px 0 0;min-height:1.3em}.wake{justify-content:flex-end}.wake .note{margin:0}.pick{position:relative;display:inline-flex;align-items:center}.pick input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}.filename{overflow-wrap:anywhere;margin:15px 0;min-height:1.3em}
 #seek{width:100%;margin:17px 0 8px}.times{font-variant-numeric:tabular-nums}.jump{margin-top:17px;justify-content:flex-start}.jump input{width:6.2rem}.music .primary{min-width:8rem}
+.volume{display:flex;align-items:center;gap:10px;margin-top:16px}.volume input{flex:1;min-width:0}.volume output{min-width:4ch;text-align:right;font-variant-numeric:tabular-nums}
+.brand{display:flex;align-items:center;gap:12px}.app-icon{width:48px;height:48px;border-radius:12px;flex-shrink:0}
 @media(max-width:720px){.grid{grid-template-columns:1fr}.wake{justify-content:flex-start}.clock{font-size:clamp(3.5rem,15vw,6rem)}}
 </style>
 </head>
 <body>
 <main>
 <header>
-  <h1>読み上げタイマー</h1>
+  <div class="brand"><img class="app-icon" src="icon.png" width="48" height="48" alt=""><h1>読み上げタイマー</h1></div>
   <div class="wake"><label><input id="wake" type="checkbox" aria-describedby="wake-status"> 画面消灯防止</label><span id="wake-status" class="note" role="status">オフ</span></div>
 </header>
 <div class="grid">
@@ -44,6 +50,7 @@ button,.pick,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled{
     <select id="interval" aria-label="読み上げ間隔"><option value="1">1分ごと</option><option value="3">3分ごと</option><option value="5">5分ごと</option></select>
     <button id="sample">音声テスト</button>
   </div>
+  <div class="volume"><label for="voice-volume">読み上げ音量</label><input id="voice-volume" type="range" min="0" max="100" step="1" value="100" aria-valuetext="100%"><output id="voice-volume-value" for="voice-volume">100%</output></div>
   <div id="voice-status" class="note" role="status"></div>
 </section>
 <section class="card music" aria-labelledby="music-title">
@@ -52,6 +59,7 @@ button,.pick,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled{
   <p id="filename" class="filename muted">ファイル未選択</p>
   <audio id="audio" preload="metadata"></audio>
   <button id="play" class="primary" disabled>再生</button>
+  <div class="volume"><label for="music-volume">音楽音量</label><input id="music-volume" type="range" min="0" max="100" step="1" value="100" aria-valuetext="100%"><output id="music-volume-value" for="music-volume">100%</output></div>
   <input id="seek" aria-label="音楽の再生位置" type="range" min="0" max="0" step="any" value="0" disabled>
   <div class="row muted times"><span id="position">00:00</span><span id="duration">--:--</span></div>
   <form id="jump" class="row jump">
@@ -69,6 +77,13 @@ button,.pick,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled{
 const byId = id => document.getElementById(id);
 const clock = byId('clock'), start = byId('start'), minutes = byId('minutes'), seconds = byId('seconds');
 const voice = byId('voice'), voiceInterval = byId('interval'), voiceStatus = byId('voice-status');
+const voiceVolume = byId('voice-volume'), musicVolume = byId('music-volume');
+function renderVolume(input) {
+  const text = input.value + '%';
+  byId(input.id + '-value').textContent = text;
+  input.setAttribute('aria-valuetext', text);
+}
+voiceVolume.addEventListener('input', () => renderVolume(voiceVolume));
 const timerStatus = byId('timer-status');
 const synth = window.speechSynthesis;
 let mode = 'down', state = 'idle', savedMs = 0, referenceTime = 0, previousSeconds = 0, ticker;
@@ -88,6 +103,7 @@ function speak(message) {
   voiceStatus.textContent = '';
   const utterance = new SpeechSynthesisUtterance(message);
   utterance.lang = 'ja-JP';
+  utterance.volume = Number(voiceVolume.value) / 100;
   const japanese = synth.getVoices().find(item => /^ja(?:-|$)/i.test(item.lang));
   if (japanese) utterance.voice = japanese;
   utterance.onend = () => { if (announcement === utterance) announcement = null; };
@@ -210,12 +226,16 @@ voice.addEventListener('change', () => {
 });
 if (!synth || !window.SpeechSynthesisUtterance) {
   voice.checked = false;
-  voice.disabled = voiceInterval.disabled = byId('sample').disabled = true;
+  voice.disabled = voiceInterval.disabled = voiceVolume.disabled = byId('sample').disabled = true;
   voiceStatus.textContent = 'このブラウザは読み上げに対応していません。';
 }
 
 const audio = byId('audio'), play = byId('play'), seek = byId('seek'), target = byId('target');
 const musicStatus = byId('music-status');
+musicVolume.addEventListener('input', () => {
+  audio.volume = Number(musicVolume.value) / 100;
+  renderVolume(musicVolume);
+});
 let musicUrl, mediaRevision = 0;
 
 function renderMusic() {
