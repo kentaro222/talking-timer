@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>読み上げタイマー</title>
+<style>
+:root{color-scheme:dark;font-family:Inter,"Hiragino Sans",Meiryo,sans-serif;background:#131610;color:#f4f5ea;--accent:#d8fa89;--line:#43493c;--muted:#b7bdae}
+*{box-sizing:border-box}body{margin:0}main{max-width:1060px;margin:auto;padding:clamp(20px,5vw,58px) clamp(15px,4vw,40px)}
+header,.row,.wake{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}header{margin-bottom:25px}h1{font-size:clamp(1.45rem,4vw,2.2rem);margin:0}h2{margin:0 0 20px;font-size:1.2rem}
+.grid{display:grid;grid-template-columns:1.35fr 1fr;gap:18px;align-items:start}.card{min-width:0;background:#20251c;border:1px solid #383f32;border-radius:24px;padding:clamp(16px,3vw,27px)}
+button,input,select{font:inherit}button,input:not([type=checkbox]):not([type=range]),select,.pick{border:1px solid var(--line);border-radius:12px;background:#2a3025;color:inherit;min-height:44px;padding:8px 12px}
+button,.pick,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled{opacity:.48;cursor:default}button:hover:not(:disabled),.pick:hover{border-color:var(--accent)}button.primary,button[aria-pressed=true]{background:var(--accent);color:#202711;border-color:var(--accent);font-weight:700}
+:focus-visible,.pick:focus-within{outline:2px solid var(--accent);outline-offset:3px}input[type=checkbox],input[type=range]{accent-color:var(--accent)}input[type=checkbox]{width:18px;height:18px;vertical-align:middle}
+.modes,.actions{display:flex;gap:8px}.modes button,.actions button{flex:1}.clock{text-align:center;padding:24px 0 20px;font-size:clamp(3.5rem,11vw,7rem);font-weight:650;font-variant-numeric:tabular-nums;letter-spacing:-.07em;line-height:1;color:var(--accent)}
+.time-settings{display:flex;align-items:center;justify-content:center;gap:10px;min-height:48px;margin-bottom:16px}.time-settings input{width:4.25rem}.options{border-top:1px solid var(--line);margin-top:22px;padding-top:17px;justify-content:flex-start}.options select{max-width:100%}.note,.muted{color:var(--muted);font-size:.85rem}.note{margin:9px 0 0;min-height:1.3em}.wake{justify-content:flex-end}.wake .note{margin:0}.pick{position:relative;display:inline-flex;align-items:center}.pick input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}.filename{overflow-wrap:anywhere;margin:15px 0;min-height:1.3em}
+#seek{width:100%;margin:17px 0 8px}.times{font-variant-numeric:tabular-nums}.jump{margin-top:17px;justify-content:flex-start}.jump input{width:6.2rem}.music .primary{min-width:8rem}
+@media(max-width:720px){.grid{grid-template-columns:1fr}.wake{justify-content:flex-start}.clock{font-size:clamp(3.5rem,15vw,6rem)}}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>読み上げタイマー</h1>
+  <div class="wake"><label><input id="wake" type="checkbox" aria-describedby="wake-status"> 画面消灯防止</label><span id="wake-status" class="note" role="status">オフ</span></div>
+</header>
+<div class="grid">
+<section class="card" aria-labelledby="timer-title">
+  <h2 id="timer-title">タイマー</h2>
+  <div class="modes">
+    <button id="up" aria-pressed="false">カウントアップ</button>
+    <button id="down" aria-pressed="true">カウントダウン</button>
+  </div>
+  <div id="clock" class="clock" role="timer" aria-label="タイマーの時間">05:00</div>
+  <div class="time-settings" id="settings">
+    <label><input id="minutes" aria-label="分" type="number" min="0" max="999" step="1" value="5"> 分</label>
+    <label><input id="seconds" aria-label="秒" type="number" min="0" max="59" step="1" value="0"> 秒</label>
+  </div>
+  <div class="actions"><button id="start" class="primary">開始</button><button id="reset">リセット</button></div>
+  <div id="timer-status" class="note" role="status"></div>
+  <div class="row options">
+    <label><input id="voice" type="checkbox" checked> 読み上げ</label>
+    <select id="interval" aria-label="読み上げ間隔"><option value="1">1分ごと</option><option value="3">3分ごと</option><option value="5">5分ごと</option></select>
+    <button id="sample">音声テスト</button>
+  </div>
+  <div id="voice-status" class="note" role="status"></div>
+</section>
+<section class="card music" aria-labelledby="music-title">
+  <h2 id="music-title">音楽プレーヤー</h2>
+  <label class="pick">音楽ファイルを選ぶ<input id="file" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac,.aac,.opus"></label>
+  <p id="filename" class="filename muted">ファイル未選択</p>
+  <audio id="audio" preload="metadata"></audio>
+  <button id="play" class="primary" disabled>再生</button>
+  <input id="seek" aria-label="音楽の再生位置" type="range" min="0" max="0" step="any" value="0" disabled>
+  <div class="row muted times"><span id="position">00:00</span><span id="duration">--:--</span></div>
+  <form id="jump" class="row jump">
+    <label for="target">再生位置</label>
+    <input id="target" placeholder="1:30" aria-describedby="jump-hint" autocomplete="off" required disabled>
+    <button id="go" disabled>移動</button>
+  </form>
+  <p id="jump-hint" class="note">分:秒、時:分:秒、または秒数で入力</p>
+  <div id="music-status" class="note" role="status"></div>
+</section>
+</div>
+</main>
+<script>
+'use strict';
+const byId = id => document.getElementById(id);
+const clock = byId('clock'), start = byId('start'), minutes = byId('minutes'), seconds = byId('seconds');
+const voice = byId('voice'), voiceInterval = byId('interval'), voiceStatus = byId('voice-status');
+const timerStatus = byId('timer-status');
+const synth = window.speechSynthesis;
+let mode = 'down', state = 'idle', savedMs = 0, referenceTime = 0, previousSeconds = 0, ticker;
+let announcement;
+
+function formatTime(value) {
+  const hours = Math.floor(value / 3600);
+  const mins = hours ? Math.floor(value / 60) % 60 : Math.floor(value / 60);
+  const parts = [mins, value % 60].map(part => String(part).padStart(2, '0'));
+  if (hours) parts.unshift(String(hours).padStart(2, '0'));
+  return parts.join(':');
+}
+
+function speak(message) {
+  if (!synth || !window.SpeechSynthesisUtterance) return;
+  synth.cancel();
+  voiceStatus.textContent = '';
+  const utterance = new SpeechSynthesisUtterance(message);
+  utterance.lang = 'ja-JP';
+  const japanese = synth.getVoices().find(item => /^ja(?:-|$)/i.test(item.lang));
+  if (japanese) utterance.voice = japanese;
+  utterance.onend = () => { if (announcement === utterance) announcement = null; };
+  utterance.onerror = event => {
+    if (announcement !== utterance) return;
+    announcement = null;
+    if (event.error !== 'interrupted' && event.error !== 'canceled') {
+      voiceStatus.textContent = '読み上げを再生できませんでした。端末の日本語音声設定をご確認ください。';
+    }
+  };
+  announcement = utterance;
+  synth.speak(utterance);
+}
+
+function renderTimer() {
+  const idle = state === 'idle';
+  byId('settings').style.visibility = mode === 'down' ? 'visible' : 'hidden';
+  minutes.disabled = seconds.disabled = !idle;
+  byId('up').setAttribute('aria-pressed', String(mode === 'up'));
+  byId('down').setAttribute('aria-pressed', String(mode === 'down'));
+  start.textContent = {idle:'開始', running:'一時停止', paused:'再開', finished:'もう一度'}[state];
+  if (idle) {
+    const duration = mode === 'up' ? 0 : (minutes.valueAsNumber || 0) * 60 + (seconds.valueAsNumber || 0);
+    clock.textContent = formatTime(Math.max(0, Math.trunc(duration)));
+  }
+}
+
+function updateTimer(now = Date.now()) {
+  const elapsed = Math.max(0, now - referenceTime);
+  const currentMs = mode === 'up' ? savedMs + elapsed : Math.max(0, savedMs - elapsed);
+  const value = mode === 'up' ? Math.floor(currentMs / 1000) : Math.ceil(currentMs / 1000);
+  clock.textContent = formatTime(value);
+  if (mode === 'down' && value === 0) {
+    clearInterval(ticker);
+    state = 'finished';
+    timerStatus.textContent = 'タイマーが終了しました';
+    if (voice.checked) speak('時間です');
+    renderTimer();
+    return currentMs;
+  }
+  const step = Number(voiceInterval.value) * 60;
+  if (voice.checked && mode === 'up' && Math.floor(value / step) > Math.floor(previousSeconds / step)) {
+    speak(Math.floor(value / 60) + '分経過しました');
+  }
+  if (voice.checked && mode === 'down' && Math.ceil(value / step) < Math.ceil(previousSeconds / step)) {
+    speak('残り' + Math.ceil(value / 60) + '分です');
+  }
+  previousSeconds = value;
+  return currentMs;
+}
+
+function resetTimer() {
+  clearInterval(ticker);
+  announcement = null;
+  synth?.cancel();
+  savedMs = 0;
+  state = 'idle';
+  timerStatus.textContent = '';
+  renderTimer();
+}
+
+start.addEventListener('click', () => {
+  if (state === 'running') {
+    savedMs = updateTimer();
+    if (state === 'finished') return;
+    clearInterval(ticker);
+    state = 'paused';
+    timerStatus.textContent = '一時停止中';
+    renderTimer();
+    return;
+  }
+  const fresh = state !== 'paused';
+  if (fresh && mode === 'down') {
+    const fields = [minutes, seconds];
+    const invalid = fields.find(field => !field.checkValidity() || !Number.isFinite(field.valueAsNumber));
+    if (invalid) {
+      timerStatus.textContent = '分は0〜999、秒は0〜59の整数を入力してください。';
+      invalid.focus();
+      return;
+    }
+    savedMs = (minutes.valueAsNumber * 60 + seconds.valueAsNumber) * 1000;
+    if (!savedMs) {
+      timerStatus.textContent = '1秒以上に設定してください。';
+      seconds.focus();
+      return;
+    }
+  } else if (fresh) {
+    savedMs = 0;
+  }
+  previousSeconds = mode === 'up' ? Math.floor(savedMs / 1000) : Math.ceil(savedMs / 1000);
+  referenceTime = Date.now();
+  state = 'running';
+  timerStatus.textContent = '';
+  if (fresh && voice.checked) speak('タイマーを開始します');
+  renderTimer();
+  updateTimer(referenceTime);
+  ticker = setInterval(() => updateTimer(), 100);
+});
+
+for (const key of ['up','down']) {
+  byId(key).addEventListener('click', () => {
+    if (mode === key) return;
+    mode = key;
+    resetTimer();
+  });
+}
+byId('reset').addEventListener('click', resetTimer);
+for (const input of [minutes, seconds]) input.addEventListener('input', () => {
+  timerStatus.textContent = '';
+  renderTimer();
+});
+byId('sample').addEventListener('click', () => speak('残り3分です'));
+voice.addEventListener('change', () => {
+  if (!voice.checked) {
+    announcement = null;
+    synth?.cancel();
+  } else {
+    speak('読み上げをオンにしました');
+  }
+});
+if (!synth || !window.SpeechSynthesisUtterance) {
+  voice.checked = false;
+  voice.disabled = voiceInterval.disabled = byId('sample').disabled = true;
+  voiceStatus.textContent = 'このブラウザは読み上げに対応していません。';
+}
+
+const audio = byId('audio'), play = byId('play'), seek = byId('seek'), target = byId('target');
+const musicStatus = byId('music-status');
+let musicUrl, mediaRevision = 0;
+
+function renderMusic() {
+  const ready = Number.isFinite(audio.duration) && audio.duration > 0 && !audio.error;
+  seek.disabled = target.disabled = byId('go').disabled = !ready;
+  play.disabled = !musicUrl || Boolean(audio.error);
+  play.textContent = audio.paused || audio.ended ? '再生' : '一時停止';
+  seek.max = ready ? audio.duration : 0;
+  seek.value = ready ? audio.currentTime : 0;
+  seek.setAttribute('aria-valuetext', formatTime(Math.floor(audio.currentTime)));
+  byId('position').textContent = formatTime(Math.floor(audio.currentTime));
+  byId('duration').textContent = ready ? formatTime(Math.floor(audio.duration)) : '--:--';
+}
+
+byId('file').addEventListener('change', event => {
+  const file = event.target.files[0];
+  if (!file) return;
+  mediaRevision++;
+  audio.pause();
+  if (musicUrl) URL.revokeObjectURL(musicUrl);
+  musicUrl = URL.createObjectURL(file);
+  audio.src = musicUrl;
+  byId('filename').textContent = file.name;
+  target.value = '';
+  musicStatus.textContent = '';
+  renderMusic();
+});
+
+play.addEventListener('click', async () => {
+  if (!audio.paused && !audio.ended) {
+    audio.pause();
+    return;
+  }
+  const revision = mediaRevision;
+  musicStatus.textContent = '';
+  try {
+    await audio.play();
+  } catch (error) {
+    if (revision === mediaRevision && error.name !== 'AbortError') {
+      musicStatus.textContent = '再生できませんでした。ブラウザで再生できる音楽ファイルを選んでください。';
+    }
+  }
+});
+
+for (const event of ['loadedmetadata','durationchange','timeupdate','seeking','play','pause','ended','emptied']) {
+  audio.addEventListener(event, renderMusic);
+}
+audio.addEventListener('error', () => {
+  if (musicUrl) musicStatus.textContent = '音楽ファイルを読み込めませんでした。';
+  renderMusic();
+});
+seek.addEventListener('input', () => {
+  audio.currentTime = Number(seek.value);
+  musicStatus.textContent = '';
+  renderMusic();
+});
+
+function parsePosition(input) {
+  const value = input.normalize('NFKC').trim();
+  if (/^\d+(?:\.\d+)?$/.test(value)) return Number(value);
+  if (!/^\d+(?::[0-5]?\d){1,2}$/.test(value)) return NaN;
+  return value.split(':').reduce((total, part) => total * 60 + Number(part), 0);
+}
+byId('jump').addEventListener('submit', event => {
+  event.preventDefault();
+  const position = parsePosition(target.value);
+  if (!Number.isFinite(position) || position > audio.duration) {
+    musicStatus.textContent = '曲の長さ以内の再生位置を入力してください。例 1:30';
+    return;
+  }
+  audio.currentTime = position;
+  musicStatus.textContent = formatTime(Math.floor(position)) + ' に移動しました。';
+  renderMusic();
+});
+
+const wake = byId('wake'), wakeStatus = byId('wake-status');
+let wakeLock, wakePending = false;
+async function syncWakeLock() {
+  if (!wake.checked) {
+    wakeStatus.textContent = 'オフ';
+    if (wakeLock) {
+      const lock = wakeLock;
+      wakeLock = null;
+      await lock.release();
+    }
+    return;
+  }
+  if (document.hidden || wakePending || (wakeLock && !wakeLock.released)) return;
+  wakePending = true;
+  wakeStatus.textContent = '設定中';
+  try {
+    const lock = await navigator.wakeLock.request('screen');
+    if (!wake.checked || document.hidden || lock.released) {
+      await lock.release();
+      wakeStatus.textContent = wake.checked ? '待機中' : 'オフ';
+      return;
+    }
+    wakeLock = lock;
+    wakeStatus.textContent = 'オン';
+    lock.addEventListener('release', () => {
+      if (wakeLock !== lock) return;
+      wakeLock = null;
+      wakeStatus.textContent = wake.checked ? (document.hidden ? '待機中' : '解除されました') : 'オフ';
+    });
+  } catch {
+    wakeStatus.textContent = wake.checked ? 'この環境では有効にできません' : 'オフ';
+  } finally {
+    wakePending = false;
+  }
+}
+if (!navigator.wakeLock) {
+  wake.disabled = true;
+  wakeStatus.textContent = 'この環境では利用できません';
+}
+wake.addEventListener('change', syncWakeLock);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && state === 'running') updateTimer();
+  if (wake.checked) void syncWakeLock();
+});
+renderTimer();
+renderMusic();
+</script>
+</body>
+</html>
