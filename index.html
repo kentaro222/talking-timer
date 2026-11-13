@@ -23,6 +23,7 @@ button,.pick,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled{
 .volume{display:flex;align-items:center;gap:10px;margin-top:16px}.volume input{flex:1;min-width:0}.volume output{min-width:4ch;text-align:right;font-variant-numeric:tabular-nums}
 #playlist{list-style:none;padding:0;margin:12px 0}#playlist li{display:flex;align-items:center;gap:6px;margin:8px 0;flex-wrap:wrap}#playlist .track{flex:1 1 100%;text-align:left;overflow-wrap:anywhere}#playlist .track[aria-current=true]{border-color:var(--accent);color:var(--accent)}.music .actions .primary{min-width:0}
 .brand{display:flex;align-items:center;gap:12px}.app-icon{width:48px;height:48px;border-radius:12px;flex-shrink:0}
+#dark-screen{position:fixed;inset:0;width:100%;max-width:none;height:100dvh;max-height:none;margin:0;padding:24px;border:0;background:#000;color:#aaa}#dark-screen[open]{display:flex;align-items:center;justify-content:center}#dark-screen::backdrop{background:#000}#dark-screen button{background:#000;color:#aaa;border-color:#444}body.darkened{overflow:hidden}
 @media(max-width:720px){.grid{grid-template-columns:1fr}.wake{justify-content:flex-start}.clock{font-size:clamp(3.5rem,15vw,6rem)}}
 </style>
 </head>
@@ -31,6 +32,7 @@ button,.pick,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled{
 <header>
   <div class="brand"><img class="app-icon" src="icon.png" width="48" height="48" alt=""><h1>読み上げタイマー</h1></div>
   <div class="wake"><label><input id="wake" type="checkbox" aria-describedby="wake-status"> 画面消灯防止</label><span id="wake-status" class="note" role="status">オフ</span></div>
+  <button id="darken" aria-haspopup="dialog" aria-controls="dark-screen">画面を暗くする</button>
 </header>
 <div class="grid">
 <section class="card" aria-labelledby="timer-title">
@@ -82,6 +84,9 @@ button,.pick,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled{
 </section>
 </div>
 </main>
+<dialog id="dark-screen" aria-label="消灯防止・暗い画面">
+  <button id="leave-dark-screen" autofocus>戻る</button>
+</dialog>
 <script>
 'use strict';
 const byId = id => document.getElementById(id);
@@ -390,6 +395,26 @@ byId('jump').addEventListener('submit', event => {
 });
 
 const wake = byId('wake'), wakeStatus = byId('wake-status');
+const darken = byId('darken'), darkScreen = byId('dark-screen');
+const themeColor = document.querySelector('meta[name="theme-color"]');
+const normalThemeColor = themeColor.content;
+darken.addEventListener('click', async () => {
+  darken.disabled = true;
+  wake.checked = true;
+  await syncWakeLock();
+  if (wakeLock && !wakeLock.released && !document.hidden && !darkScreen.open) {
+    darkScreen.showModal();
+    document.body.classList.add('darkened');
+    themeColor.content = '#000000';
+  }
+  darken.disabled = !navigator.wakeLock;
+});
+byId('leave-dark-screen').addEventListener('click', () => darkScreen.close());
+darkScreen.addEventListener('close', () => {
+  document.body.classList.remove('darkened');
+  themeColor.content = normalThemeColor;
+  darken.focus();
+});
 let wakeLock, wakePending = false;
 async function syncWakeLock() {
   if (!wake.checked) {
@@ -417,6 +442,7 @@ async function syncWakeLock() {
       if (wakeLock !== lock) return;
       wakeLock = null;
       wakeStatus.textContent = wake.checked ? (document.hidden ? '待機中' : '解除されました') : 'オフ';
+      if (darkScreen.open) darkScreen.close();
     });
   } catch {
     wakeStatus.textContent = wake.checked ? 'この環境では有効にできません' : 'オフ';
@@ -426,6 +452,7 @@ async function syncWakeLock() {
 }
 if (!navigator.wakeLock) {
   wake.disabled = true;
+  darken.disabled = true;
   wakeStatus.textContent = 'この環境では利用できません';
 }
 wake.addEventListener('change', syncWakeLock);
