@@ -21,6 +21,7 @@ button,.pick,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled{
 .time-settings{display:flex;align-items:center;justify-content:center;gap:10px;min-height:48px;margin-bottom:16px}.time-settings input{width:4.25rem}.options{border-top:1px solid var(--line);margin-top:22px;padding-top:17px;justify-content:flex-start}.options select{max-width:100%}.note,.muted{color:var(--muted);font-size:.85rem}.note{margin:9px 0 0;min-height:1.3em}.wake{justify-content:flex-end}.wake .note{margin:0}.pick{position:relative;display:inline-flex;align-items:center}.pick input{position:absolute;inset:0;opacity:0;width:100%;cursor:pointer}.filename{overflow-wrap:anywhere;margin:15px 0;min-height:1.3em}
 #seek{width:100%;margin:17px 0 8px}.times{font-variant-numeric:tabular-nums}.jump{margin-top:17px;justify-content:flex-start}.jump input{width:6.2rem}.music .primary{min-width:8rem}
 .volume{display:flex;align-items:center;gap:10px;margin-top:16px}.volume input{flex:1;min-width:0}.volume output{min-width:4ch;text-align:right;font-variant-numeric:tabular-nums}
+#playlist{list-style:none;padding:0;margin:12px 0}#playlist li{display:flex;align-items:center;gap:6px;margin:8px 0;flex-wrap:wrap}#playlist .track{flex:1 1 100%;text-align:left;overflow-wrap:anywhere}#playlist .track[aria-current=true]{border-color:var(--accent);color:var(--accent)}.music .actions .primary{min-width:0}
 .brand{display:flex;align-items:center;gap:12px}.app-icon{width:48px;height:48px;border-radius:12px;flex-shrink:0}
 @media(max-width:720px){.grid{grid-template-columns:1fr}.wake{justify-content:flex-start}.clock{font-size:clamp(3.5rem,15vw,6rem)}}
 </style>
@@ -47,18 +48,23 @@ button,.pick,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled{
   <div id="timer-status" class="note" role="status"></div>
   <div class="row options">
     <label><input id="voice" type="checkbox" checked> 読み上げ</label>
-    <select id="interval" aria-label="読み上げ間隔"><option value="1">1分ごと</option><option value="3">3分ごと</option><option value="5">5分ごと</option></select>
+    <label id="down-interval-settings">読み上げ間隔 <select id="interval" aria-label="カウントダウンの読み上げ間隔"><option value="1">1分ごと</option><option value="3">3分ごと</option><option value="5">5分ごと</option></select></label>
     <button id="sample">音声テスト</button>
+  </div>
+  <div id="up-interval-settings" hidden>
+    <label for="up-interval">カウントアップの読み上げ間隔（分）</label>
+    <input id="up-interval" type="number" min="0" max="999" step="1" value="0" style="width:5rem" aria-describedby="up-interval-hint">
+    <p id="up-interval-hint" class="note">0・空欄は1分ごとに読み上げます。</p>
   </div>
   <div class="volume"><label for="voice-volume">読み上げ音量</label><input id="voice-volume" type="range" min="0" max="100" step="1" value="100" aria-valuetext="100%"><output id="voice-volume-value" for="voice-volume">100%</output></div>
   <div id="voice-status" class="note" role="status"></div>
 </section>
 <section class="card music" aria-labelledby="music-title">
   <h2 id="music-title">音楽プレーヤー</h2>
-  <label class="pick">音楽ファイルを選ぶ<input id="file" type="file" accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac,.aac,.opus"></label>
+  <label class="pick">音楽ファイルを追加<input id="file" type="file" multiple accept="audio/*,.mp3,.m4a,.wav,.ogg,.flac,.aac,.opus"></label>
   <p id="filename" class="filename muted">ファイル未選択</p>
   <audio id="audio" preload="metadata"></audio>
-  <button id="play" class="primary" disabled>再生</button>
+  <div class="actions"><button id="previous" disabled>前の曲</button><button id="play" class="primary" disabled>再生</button><button id="next" disabled>次の曲</button></div>
   <div class="volume"><label for="music-volume">音楽音量</label><input id="music-volume" type="range" min="0" max="100" step="1" value="100" aria-valuetext="100%"><output id="music-volume-value" for="music-volume">100%</output></div>
   <input id="seek" aria-label="音楽の再生位置" type="range" min="0" max="0" step="any" value="0" disabled>
   <div class="row muted times"><span id="position">00:00</span><span id="duration">--:--</span></div>
@@ -68,6 +74,9 @@ button,.pick,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled{
     <button id="go" disabled>移動</button>
   </form>
   <p id="jump-hint" class="note">分:秒、時:分:秒、または秒数で入力</p>
+  <h3>再生リスト</h3>
+  <ol id="playlist" aria-label="再生リスト"></ol>
+  <p class="note">複数選択して追加できます。最後の曲で再生を終了します。ページを閉じるとリストは消えます。</p>
   <div id="music-status" class="note" role="status"></div>
 </section>
 </div>
@@ -77,6 +86,7 @@ button,.pick,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled{
 const byId = id => document.getElementById(id);
 const clock = byId('clock'), start = byId('start'), minutes = byId('minutes'), seconds = byId('seconds');
 const voice = byId('voice'), voiceInterval = byId('interval'), voiceStatus = byId('voice-status');
+const upInterval = byId('up-interval');
 const voiceVolume = byId('voice-volume'), musicVolume = byId('music-volume');
 function renderVolume(input) {
   const text = input.value + '%';
@@ -120,6 +130,8 @@ function speak(message) {
 
 function renderTimer() {
   const idle = state === 'idle';
+  byId('up-interval-settings').hidden = mode !== 'up';
+  byId('down-interval-settings').hidden = mode !== 'down';
   byId('settings').style.visibility = mode === 'down' ? 'visible' : 'hidden';
   minutes.disabled = seconds.disabled = !idle;
   byId('up').setAttribute('aria-pressed', String(mode === 'up'));
@@ -144,7 +156,8 @@ function updateTimer(now = Date.now()) {
     renderTimer();
     return currentMs;
   }
-  const step = Number(voiceInterval.value) * 60;
+  const upMinutes = upInterval.checkValidity() ? (upInterval.valueAsNumber || 1) : 1;
+  const step = (mode === 'up' ? upMinutes : Number(voiceInterval.value)) * 60;
   if (voice.checked && mode === 'up' && Math.floor(value / step) > Math.floor(previousSeconds / step)) {
     speak(Math.floor(value / 60) + '分経過しました');
   }
@@ -226,7 +239,7 @@ voice.addEventListener('change', () => {
 });
 if (!synth || !window.SpeechSynthesisUtterance) {
   voice.checked = false;
-  voice.disabled = voiceInterval.disabled = voiceVolume.disabled = byId('sample').disabled = true;
+  voice.disabled = voiceInterval.disabled = upInterval.disabled = voiceVolume.disabled = byId('sample').disabled = true;
   voiceStatus.textContent = 'このブラウザは読み上げに対応していません。';
 }
 
@@ -237,6 +250,73 @@ musicVolume.addEventListener('input', () => {
   renderVolume(musicVolume);
 });
 let musicUrl, mediaRevision = 0;
+const tracks = [];
+let currentTrack = null;
+
+function renderPlaylist() {
+  const list = byId('playlist');
+  list.replaceChildren();
+  tracks.forEach((track, index) => {
+    const row = document.createElement('li');
+    const button = (text, label, action, disabled = false) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.textContent = text;
+      item.setAttribute('aria-label', label);
+      item.disabled = disabled;
+      item.addEventListener('click', action);
+      row.append(item);
+      return item;
+    };
+    const select = button((index + 1) + '. ' + track.name, track.name + 'を再生', () => selectTrack(track, true));
+    select.className = 'track';
+    if (track === currentTrack) select.setAttribute('aria-current', 'true');
+    const move = offset => {
+      [tracks[index], tracks[index + offset]] = [tracks[index + offset], tracks[index]];
+      renderPlaylist();
+    };
+    button('↑', track.name + 'を上へ', () => move(-1), index === 0);
+    button('↓', track.name + 'を下へ', () => move(1), index === tracks.length - 1);
+    button('削除', track.name + 'を削除', () => {
+      const wasPlaying = !audio.paused && !audio.ended;
+      tracks.splice(index, 1);
+      if (track === currentTrack) selectTrack(tracks[index] || tracks[index - 1] || null, wasPlaying);
+      URL.revokeObjectURL(track.url);
+      renderPlaylist();
+    });
+    list.append(row);
+  });
+  const index = tracks.indexOf(currentTrack);
+  byId('previous').disabled = index <= 0;
+  byId('next').disabled = index < 0 || index >= tracks.length - 1;
+}
+
+function selectTrack(track, autoplay = false) {
+  mediaRevision++;
+  audio.pause();
+  currentTrack = track;
+  musicUrl = track?.url;
+  if (track) audio.src = track.url;
+  else audio.removeAttribute('src');
+  audio.load();
+  byId('filename').textContent = track ? track.name : 'ファイル未選択';
+  target.value = '';
+  musicStatus.textContent = '';
+  renderPlaylist();
+  renderMusic();
+  if (track && autoplay) void playMusic();
+}
+
+for (const [id, offset] of [['previous', -1], ['next', 1]]) {
+  byId(id).addEventListener('click', () => {
+    const track = tracks[tracks.indexOf(currentTrack) + offset];
+    if (track) selectTrack(track, true);
+  });
+}
+audio.addEventListener('ended', () => {
+  const next = tracks[tracks.indexOf(currentTrack) + 1];
+  if (next) selectTrack(next, true);
+});
 
 function renderMusic() {
   const ready = Number.isFinite(audio.duration) && audio.duration > 0 && !audio.error;
@@ -251,24 +331,20 @@ function renderMusic() {
 }
 
 byId('file').addEventListener('change', event => {
-  const file = event.target.files[0];
-  if (!file) return;
-  mediaRevision++;
-  audio.pause();
-  if (musicUrl) URL.revokeObjectURL(musicUrl);
-  musicUrl = URL.createObjectURL(file);
-  audio.src = musicUrl;
-  byId('filename').textContent = file.name;
-  target.value = '';
-  musicStatus.textContent = '';
-  renderMusic();
+  for (const file of event.target.files) {
+    tracks.push({name: file.name, url: URL.createObjectURL(file)});
+  }
+  if (!currentTrack && tracks.length) selectTrack(tracks[0]);
+  else renderPlaylist();
+  event.target.value = '';
 });
 
-play.addEventListener('click', async () => {
-  if (!audio.paused && !audio.ended) {
-    audio.pause();
-    return;
-  }
+play.addEventListener('click', () => {
+  if (!audio.paused && !audio.ended) audio.pause();
+  else void playMusic();
+});
+
+async function playMusic() {
   const revision = mediaRevision;
   musicStatus.textContent = '';
   try {
@@ -278,7 +354,7 @@ play.addEventListener('click', async () => {
       musicStatus.textContent = '再生できませんでした。ブラウザで再生できる音楽ファイルを選んでください。';
     }
   }
-});
+}
 
 for (const event of ['loadedmetadata','durationchange','timeupdate','seeking','play','pause','ended','emptied']) {
   audio.addEventListener(event, renderMusic);
@@ -355,8 +431,36 @@ document.addEventListener('visibilitychange', () => {
   if (!document.hidden && state === 'running') updateTimer();
   if (wake.checked) void syncWakeLock();
 });
+// Store only validated settings; local files and playback state stay in memory.
+const settingsKey = 'talking-timer.settings.v1';
+const numericSettings = [minutes, seconds, voiceInterval, upInterval, voiceVolume, musicVolume];
+let storedSettings = {};
+try {
+  const saved = JSON.parse(localStorage.getItem(settingsKey));
+  if (saved && typeof saved === 'object' && !Array.isArray(saved)) storedSettings = saved;
+} catch { /* Storage can be unavailable or contain invalid JSON. */ }
+for (const input of numericSettings) {
+  const saved = storedSettings[input.id];
+  const initial = input.value;
+  if (typeof saved === 'string') {
+    input.value = saved;
+    if (input.value !== saved || !input.checkValidity() || (saved === '' && input !== upInterval)) {
+      input.value = initial;
+    }
+  }
+  storedSettings[input.id] = input.value;
+  input.addEventListener('input', () => {
+    if (!input.checkValidity() || (input.value === '' && input !== upInterval)) return;
+    storedSettings[input.id] = input.value;
+    try { localStorage.setItem(settingsKey, JSON.stringify(storedSettings)); } catch { /* Continue without persistence. */ }
+  });
+}
+audio.volume = Number(musicVolume.value) / 100;
+renderVolume(voiceVolume);
+renderVolume(musicVolume);
 renderTimer();
 renderMusic();
+renderPlaylist();
 </script>
 </body>
 </html>
