@@ -75,8 +75,9 @@ button,.pick,input[type=checkbox]{cursor:pointer}button:disabled,input:disabled{
   </form>
   <p id="jump-hint" class="note">分:秒、時:分:秒、または秒数で入力</p>
   <h3>再生リスト</h3>
+  <label><input id="repeat" type="checkbox"> リピート（最後から先頭へ）</label>
   <ol id="playlist" aria-label="再生リスト"></ol>
-  <p class="note">複数選択して追加できます。最後の曲で再生を終了します。ページを閉じるとリストは消えます。</p>
+  <p class="note">複数選択して追加できます。リピートがオフなら最後の曲で停止し、オンなら先頭から繰り返します。ページを閉じるとリストは消えます。</p>
   <div id="music-status" class="note" role="status"></div>
 </section>
 </div>
@@ -245,6 +246,7 @@ if (!synth || !window.SpeechSynthesisUtterance) {
 
 const audio = byId('audio'), play = byId('play'), seek = byId('seek'), target = byId('target');
 const musicStatus = byId('music-status');
+const repeat = byId('repeat');
 musicVolume.addEventListener('input', () => {
   audio.volume = Number(musicVolume.value) / 100;
   renderVolume(musicVolume);
@@ -314,7 +316,7 @@ for (const [id, offset] of [['previous', -1], ['next', 1]]) {
   });
 }
 audio.addEventListener('ended', () => {
-  const next = tracks[tracks.indexOf(currentTrack) + 1];
+  const next = tracks[tracks.indexOf(currentTrack) + 1] || (repeat.checked ? tracks[0] : null);
   if (next) selectTrack(next, true);
 });
 
@@ -455,6 +457,11 @@ for (const input of numericSettings) {
     try { localStorage.setItem(settingsKey, JSON.stringify(storedSettings)); } catch { /* Continue without persistence. */ }
   });
 }
+if (typeof storedSettings.repeat === 'boolean') repeat.checked = storedSettings.repeat;
+repeat.addEventListener('change', () => {
+  storedSettings.repeat = repeat.checked;
+  try { localStorage.setItem(settingsKey, JSON.stringify(storedSettings)); } catch { /* Continue without persistence. */ }
+});
 audio.volume = Number(musicVolume.value) / 100;
 renderVolume(voiceVolume);
 renderVolume(musicVolume);
